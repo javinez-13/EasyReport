@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TokenType {
+  REFRESH
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique @db.VarChar(255)
+  username        String    @unique @db.VarChar(50)
+  fullname        String?   @map("full_name") @db.VarChar(255)
+  phoneNumber     String?   @unique @map("phone_number") @db.VarChar(20)
+  password        String?   @map("password_hash")
+  role            String    @default("RESIDENT") @db.VarChar(50)
+  isVerified      Boolean   @default(false) @map("is_verified")
+  googleId        String?   @unique @map("google_id")
+  profilePicture  String?   @map("profile_picture")
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tokens       Token[]
+  activityLogs ActivityLog[]
+
+  // 1 Resident -> max 1 User. Maps the existing nullable UNIQUE
+  // users.resident_id FK -> residents(id) ON DELETE SET NULL in Neon.
+  // Schema-only change: no DB migration required, no data touched.
+  residentId Int?      @unique @map("resident_id")
+  resident   Resident? @relation(fields: [residentId], references: [id], onDelete: SetNull)
+
+  @@map("users")
+}
+
+model Token {
+  id          Int        @id @default(autoincrement())
+  type        TokenType
+  token       String     @unique
+  expiresAt   DateTime   @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  consumedAt  DateTime?  @map("consumed_at") @db.Timestamptz(6)
+  revokedAt   DateTime?  @map("revoked_at") @db.Timestamptz(6)
+
+  userId      Int        @map("user_id")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("tokens")
+}
+
+model Resident {
+  id               Int       @id @default(autoincrement())
+  residentId       String    @unique @map("resident_id") @db.VarChar(20)
+  fullName         String    @map("full_name") @db.VarChar(255)
+  firstName        String?   @map("first_name") @db.VarChar(100)
+  middleName       String?   @map("middle_name") @db.VarChar(100)
+  lastName         String?   @map("last_name") @db.VarChar(100)
+  suffix           String?   @db.VarChar(10)
+  birthdate        DateTime? @db.Date
+  birthPlace       String?   @map("birth_place")
+  age              Int?
+  gender           String?   @db.VarChar(20)
+  civilStatus      String?   @map("civil_status") @db.VarChar(50)
+  nationality      String?   @db.VarChar(100)
+  religion         String?   @db.VarChar(100)
+  occupation       String?   @db.VarChar(150)
+  address          String?
+  contactNumber    String?   @map("contact_number") @db.VarChar(20)
+  email            String?   @db.VarChar(255)
+  pwdIdNo          String?   @map("pwd_id_no") @db.VarChar(50)
+  familyMonthlyIncome String? @map("family_monthly_income") @db.VarChar(50)
+  indigent         String?   @db.VarChar(10)
+  registeredVoter  String?   @map("registered_voter") @db.VarChar(10)
+  precinctNo       String?   @map("precinct_no") @db.VarChar(50)
+  voterIdNo        String?   @map("voter_id_no") @db.VarChar(50)
+  photoUrl         String?   @map("photo_url")
+  householdNumber  String?   @map("household_number") @db.VarChar(50)
+  emergencyContact String?   @map("emergency_contact") @db.VarChar(255)
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Back-relation for the 1-1 User <-> Resident link (FK lives on users.resident_id).
+  // Registration status derives from this relation: user == null -> NOT REGISTERED.
+  user User?
+
+  @@map("residents")
+}
+
+model Complaint {
+  id                 Int       @id @default(autoincrement())
+  complaintNo        String    @unique @map("complaint_no") @db.VarChar(20)
+  dateFiled          DateTime? @default(now()) @map("date_filed") @db.Date
+  category           String    @db.VarChar(100)
+  priority           String?   @default("Medium") @db.VarChar(20)
+  status             String?   @default("Pending") @db.VarChar(50)
+  description        String?
+  evidence           Json?     @default("[]")
+  complainantName    String    @map("complainant_name") @db.VarChar(255)
+  complainantAddress String?   @map("complainant_address")
+  complainantContact String?   @map("complainant_contact") @db.VarChar(20)
+  complainantEmail   String?   @map("complainant_email") @db.VarChar(255)
+  complainantAge     Int?      @map("complainant_age")
+  respondentName     String    @map("respondent_name") @db.VarChar(255)
+  respondentAddress  String?   @map("respondent_address")
+  respondentContact  String?   @map("respondent_contact") @db.VarChar(20)
+  respondentEmail    String?   @map("respondent_email") @db.VarChar(255)
+  respondentAge      Int?      @map("respondent_age")
+  createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  summons            Summon[]
+  hearings           Hearing[]
+  notifications      Notification[]
+
+  @@map("complaints")
+}
+
+model Summon {
+  id          Int       @id @default(autoincrement())
+  summonNo    String    @unique @map("summon_no") @db.VarChar(20)
+  complaintId Int       @map("complaint_id")
+  hearingDate DateTime? @map("hearing_date") @db.Date
+  hearingTime String?   @map("hearing_time") @db.VarChar(20)
+  venue       String?
+  officer     String?   @db.VarChar(255)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@map("summons")
+}
+
+model Hearing {
+  id               Int       @id @default(autoincrement())
+  complaintId      Int       @map("complaint_id")
+  hearingNumber    Int?      @default(1) @map("hearing_number")
+  hearingDate      DateTime? @map("hearing_date") @db.Date
+  hearingTime      String?   @map("hearing_time") @db.VarChar(20)
+  timeConsumed     String?   @map("time_consumed") @db.VarChar(50)
+  assignedMediator String?   @map("assigned_mediator") @db.VarChar(255)
+  venue            String?
+  witnesses        Json?     @default("[]")
+  decision         String?
+  mediationNotes   String?   @map("mediation_notes")
+  previousNotes    String?   @map("previous_notes")
+  status           String?   @default("Scheduled") @db.VarChar(50)
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  complaint        Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@map("hearings")
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  complaintId Int?      @map("complaint_id")
+  recipient   String?   @db.VarChar(255)
+  message     String?
+  type        String?   @db.VarChar(50)
+  sentAt      DateTime? @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  complaint   Complaint? @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id         Int       @id @default(autoincrement())
+  userId     Int?      @map("user_id")
+  action     String    @db.VarChar(255)
+  entityType String?   @map("entity_type") @db.VarChar(50)
+  entityId   Int?      @map("entity_id")
+  details    Json?
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user       User?     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
